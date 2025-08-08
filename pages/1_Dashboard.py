@@ -59,7 +59,7 @@ collabs = supabase.table("collaborations") \
 options = [("me", "Data Saya")]
 for c in collabs.data:
     if c["owner_id"] == user.id:
-        options.append((c["collab_id"], f"Data {c['collab_email']}"))
+        options.append((c["collab_id"], f"Data {c['requester_email']}"))
     else:
         options.append((c["owner_id"], f"Data {c['owner_email']}"))
 
