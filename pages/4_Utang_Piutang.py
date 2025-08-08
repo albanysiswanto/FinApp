@@ -83,7 +83,7 @@ if not debts_df.empty:
             with col2:
                 st.write(row["type"])
             with col3:
-                st.write(f"{row['amount']:,}")
+                st.write(f"Rp. {row['amount']:,}")
             with col4:
                 st.write(row["due_date"])
             with col5:
