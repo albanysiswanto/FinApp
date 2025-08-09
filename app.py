@@ -39,7 +39,13 @@ def login():
     if st.button("Daftar Akun"):
         try:
             res = supabase.auth.sign_up({"email": email, "password": password})
-            st.success("Akun berhasil dibuat! Silakan verifikasi email dan login.")
+             # res biasanya object dengan .user dan .error tidak ada, 
+            # jadi kita cek user hasil signup
+            if res.user:
+                st.success("Akun berhasil dibuat! Silakan verifikasi email dan login.")
+            else:
+                # Kalau user kosong, kemungkinan gagal signup karena email sudah ada atau error lain
+                st.error("Registrasi gagal. Mungkin email sudah terdaftar atau password tidak valid.")
         except Exception as e:
             st.error(f"Registrasi gagal: {e}")
 
