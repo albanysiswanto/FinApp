@@ -6,13 +6,16 @@ from datetime import date
 
 st.set_page_config(page_title="Transaksi", layout="wide")
 
+# --- Fungsi format Rupiah ---
+def format_rupiah(x):
+    return f"Rp {x:,.0f}".replace(",", ".")
+
 # Pastikan user login
 if "user" not in st.session_state or st.session_state.user is None:
     st.warning("Silakan login terlebih dahulu.")
     st.switch_page("app.py")
 
 user_id = st.session_state.user.id
-
 st.title("📜 Kelola Transaksi")
 
 # Ambil data dompet & kategori
@@ -25,7 +28,6 @@ categories_df = pd.DataFrame(categories_res.data or [])
 if wallets_df.empty:
     st.error("⚠️ Kamu belum punya dompet. Buat dompet dulu di halaman Dompet.")
     st.stop()
-
 if categories_df.empty:
     st.error("⚠️ Kamu belum punya kategori. Buat kategori dulu di halaman Kategori.")
     st.stop()
@@ -34,6 +36,7 @@ if categories_df.empty:
 wallet_options = dict(zip(wallets_df["id"], wallets_df["name"]))
 category_options = dict(zip(categories_df["id"], categories_df["name"]))
 
+# --- Helper ---
 def get_wallet_balance_from_db(wid):
     res = supabase.table("wallets").select("balance").eq("id", wid).single().execute()
     data = res.data
@@ -48,21 +51,45 @@ def get_transaction_from_db(tid):
     res = supabase.table("transactions").select("*").eq("id", tid).single().execute()
     return res.data
 
-# --- Form Tambah Transaksi ---
-with st.form("add_transaction_form"):
-    wallet_id = st.selectbox("Pilih Dompet", options=list(wallet_options.keys()),
-                              format_func=lambda x: wallet_options[x])
-    category_id = st.selectbox("Pilih Kategori", options=list(category_options.keys()),
-                                format_func=lambda x: category_options[x])
-    trans_type = st.selectbox("Jenis Transaksi", options=["pemasukan", "pengeluaran"])
-    amount = st.number_input("Jumlah", min_value=0.0, step=1000.0)
-    description = st.text_area("Deskripsi")
-    trans_date = st.date_input("Tanggal", value=date.today())
+# --- Input Tambah Transaksi ---
+st.subheader("Tambah Transaksi")
 
-    submitted = st.form_submit_button("Tambah Transaksi")
-    if submitted:
+wallet_id = st.selectbox(
+    "Pilih Dompet",
+    options=list(wallet_options.keys()),
+    format_func=lambda x: wallet_options[x],
+    key="wallet_id"
+)
+
+trans_type = st.selectbox(
+    "Jenis Transaksi",
+    options=["", "pemasukan", "pengeluaran"],
+    format_func=lambda x: "Pilih..." if x == "" else x.capitalize(),
+    key="trans_type"
+)
+
+if trans_type:
+    filtered_categories = categories_df[categories_df["type"] == trans_type]
+    category_options_filtered = dict(zip(filtered_categories["id"], filtered_categories["name"]))
+    category_id = st.selectbox(
+        "Pilih Kategori",
+        options=list(category_options_filtered.keys()),
+        format_func=lambda x: category_options_filtered[x],
+        key="category_id"
+    )
+else:
+    category_id = None
+    st.info("Silakan pilih jenis transaksi terlebih dahulu.")
+
+amount = st.number_input("Jumlah", min_value=0.0, step=1000.0, key="amount")
+description = st.text_area("Deskripsi", key="description")
+trans_date = st.date_input("Tanggal", value=date.today(), key="trans_date")
+
+if st.button("Tambah Transaksi"):
+    if not trans_type or not category_id:
+        st.error("Jenis transaksi dan kategori harus dipilih.")
+    else:
         try:
-            date_iso = trans_date.isoformat()
             payload = {
                 "user_id": user_id,
                 "wallet_id": wallet_id,
@@ -70,9 +97,8 @@ with st.form("add_transaction_form"):
                 "amount": float(amount),
                 "type": trans_type,
                 "description": description,
-                "date": date_iso
+                "date": trans_date.isoformat()
             }
-
             supabase.table("transactions").insert(payload).execute()
 
             wallet_balance = get_wallet_balance_from_db(wallet_id)
@@ -90,7 +116,6 @@ with st.form("add_transaction_form"):
 
 # --- Filter Transaksi ---
 st.subheader("Filter Transaksi")
-
 month_filter = st.selectbox(
     "Pilih Bulan",
     options=list(range(1, 13)),
@@ -106,21 +131,26 @@ year_filter = st.number_input(
 
 type_filter = st.selectbox("Jenis Transaksi", options=["Semua", "pemasukan", "pengeluaran"])
 
+if type_filter == "Semua":
+    category_filter_df = categories_df
+else:
+    category_filter_df = categories_df[categories_df["type"] == type_filter]
+
+category_filter_options = dict(zip(category_filter_df["id"], category_filter_df["name"]))
+
 wallet_filter = st.selectbox(
     "Pilih Dompet",
     options=["Semua"] + list(wallet_options.keys()),
     format_func=lambda x: wallet_options[x] if x != "Semua" else "Semua"
 )
-
 category_filter = st.selectbox(
     "Pilih Kategori",
-    options=["Semua"] + list(category_options.keys()),
-    format_func=lambda x: category_options[x] if x != "Semua" else "Semua"
+    options=["Semua"] + list(category_filter_options.keys()),
+    format_func=lambda x: category_filter_options[x] if x != "Semua" else "Semua"
 )
 
-# --- Ambil data transaksi dari database ---
+# --- Ambil data transaksi ---
 query = supabase.table("transactions").select("*").eq("user_id", user_id)
-
 if type_filter != "Semua":
     query = query.eq("type", type_filter)
 if wallet_filter != "Semua":
@@ -131,7 +161,6 @@ if category_filter != "Semua":
 transactions_res = query.order("date", desc=True).execute()
 transactions_df = pd.DataFrame(transactions_res.data or [])
 
-# Filter bulan & tahun di sisi Python
 if not transactions_df.empty:
     transactions_df["date"] = pd.to_datetime(transactions_df["date"])
     transactions_df = transactions_df[
@@ -139,42 +168,56 @@ if not transactions_df.empty:
         (transactions_df["date"].dt.year == year_filter)
     ]
 
+# --- Tampilkan Transaksi ---
 if not transactions_df.empty:
     transactions_df["wallet_name"] = transactions_df["wallet_id"].map(wallet_options)
     transactions_df["category_name"] = transactions_df["category_id"].map(category_options)
+    transactions_df = transactions_df.sort_values(by=["date", "created_at"], ascending=[False, False])
 
-    st.subheader("Daftar Transaksi")
-    st.dataframe(transactions_df[["date", "wallet_name", "category_name", "type", "amount", "description"]])
+    st.subheader("📋 Daftar Transaksi")
 
-    label_map = {}
     for _, row in transactions_df.iterrows():
-        label_map[row["id"]] = f"{row['date'].strftime('%Y-%m-%d')} | {row['wallet_name']} | {row['category_name']} | {row['type']} | {row['amount']}"
+        with st.container():
+            st.markdown(
+                f"""
+                <div style="border:1px solid #ddd; border-radius:8px; padding:10px; margin-bottom:10px;">
+                    <b>{row['date'].strftime('%Y-%m-%d')}</b> - {row['wallet_name']}<br>
+                    <span style="color:{'green' if row['type']=='pemasukan' else 'red'};">
+                        {row['category_name']} ({row['type']})
+                    </span><br>
+                    <b>{format_rupiah(row['amount'])}</b><br>
+                    <small>{row['description'] or '-'}</small>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
-    delete_id = st.selectbox(
-        "Pilih Transaksi untuk Dihapus",
-        options=list(label_map.keys()),
-        format_func=lambda x: label_map[x]
-    )
+            # Tombol hapus langsung
+            if st.button("🗑️ Hapus", key=f"hapus_{row['id']}"):
+                try:
+                    trans = get_transaction_from_db(row["id"])
+                    if trans:
+                        wallet_balance = get_wallet_balance_from_db(trans["wallet_id"])
+                        amt = float(trans["amount"] or 0)
 
-    if st.button("Hapus Transaksi"):
-        try:
-            trans = get_transaction_from_db(delete_id)
-            if not trans:
-                st.error("Transaksi tidak ditemukan.")
-            else:
-                wallet_balance = get_wallet_balance_from_db(trans["wallet_id"])
-                amt = float(trans["amount"])
-                if trans["type"] == "pemasukan":
-                    new_balance = wallet_balance - amt
-                else:
-                    new_balance = wallet_balance + amt
+                        # Kembalikan saldo
+                        if trans["type"] == "pemasukan":
+                            new_balance = wallet_balance - amt
+                        else:
+                            new_balance = wallet_balance + amt
 
-                supabase.table("wallets").update({"balance": new_balance}).eq("id", trans["wallet_id"]).execute()
-                supabase.table("transactions").delete().eq("id", delete_id).execute()
+                        # Update saldo
+                        supabase.table("wallets").update(
+                            {"balance": new_balance}
+                        ).eq("id", trans["wallet_id"]).execute()
 
-                st.success("Transaksi berhasil dihapus dan saldo dikembalikan.")
-                st.rerun()
-        except Exception as e:
-            st.error(f"Gagal menghapus transaksi: {e}")
+                        # Hapus transaksi
+                        supabase.table("transactions").delete().eq("id", row["id"]).execute()
+
+                        st.success("Transaksi berhasil dihapus dan saldo dikembalikan.")
+                        st.rerun()
+
+                except Exception as e:
+                    st.error(f"Gagal menghapus transaksi: {e}")
 else:
     st.info("Belum ada transaksi.")
