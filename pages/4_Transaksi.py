@@ -181,12 +181,12 @@ if not transactions_df.empty:
             st.markdown(
                 f"""
                 <div style="border:1px solid #ddd; border-radius:8px; padding:10px; margin-bottom:10px;">
-                    <b>{row['date'].strftime('%Y-%m-%d')}</b> - {row['wallet_name']}<br>
+                    <b>{row['description'] or '-'}</b> - {row['wallet_name']}<br>
+                    <b>{format_rupiah(row['amount'])}</b><br>
                     <span style="color:{'green' if row['type']=='pemasukan' else 'red'};">
                         {row['category_name']} ({row['type']})
                     </span><br>
-                    <b>{format_rupiah(row['amount'])}</b><br>
-                    <small>{row['description'] or '-'}</small>
+                    <small>{row['date'].strftime('%Y-%m-%d')}</small>
                 </div>
                 """,
                 unsafe_allow_html=True

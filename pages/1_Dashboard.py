@@ -137,7 +137,9 @@ view_user_id = user.id if selected_user_id == "me" else selected_user_id
 wallets_data = supabase.table("wallets").select("name, balance").eq("user_id", view_user_id).execute().data
 with st.expander("💼 Dompet", expanded=True):
     if wallets_data:
-        st.dataframe(wallets_data)
+        df_wallets = pd.DataFrame(wallets_data)
+        df_wallets["balance"] = df_wallets["balance"].apply(format_rupiah)
+        st.dataframe(df_wallets)
     else:
         st.info("Tidak ada dompet ditemukan.")
 
